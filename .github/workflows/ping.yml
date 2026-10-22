@@ -6,6 +6,8 @@ on:
 concurrency:
   group: sync
   cancel-in-progress: false
+permissions:
+  contents: write   # for the keepalive commit below
 jobs:
   ping:
     runs-on: ubuntu-latest
@@ -15,7 +17,21 @@ jobs:
         env:
           SYNC_URL: ${{ vars.SYNC_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        # Logs of this repository are public, so only the HTTP status is printed; the
+        # response (counts, applicant ids, error text) is discarded.
         run: |
           test -n "$SYNC_URL" && test -n "$CRON_SECRET"
-          curl --fail-with-body --silent --show-error --max-time 320 \
-            -H "Authorization: Bearer $CRON_SECRET" "$SYNC_URL"
+          code=$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 320 \
+            -H "Authorization: Bearer $CRON_SECRET" "$SYNC_URL")
+          echo "sync returned HTTP $code"
+          test "$code" = "200"
+      # GitHub disables scheduled workflows in a public repository after 60 days without a
+      # commit. An empty commit every ~45 days keeps the schedule alive.
+      - name: Keep the schedule alive
+        uses: actions/checkout@v4
+      - run: |
+          last=$(git log -1 --format=%ct)
+          if [ $(( $(date +%s) - last )) -gt $(( 45 * 86400 )) ]; then
+            git config user.name "keepalive" && git config user.email "keepalive@users.noreply.github.com"
+            git commit --allow-empty -m "keepalive: keep the scheduled workflow enabled" && git push
+          fi
