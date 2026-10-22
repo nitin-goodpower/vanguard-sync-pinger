@@ -1,7 +1,7 @@
 name: Pull new applicants
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "7,37 * * * *"   # off the hour/half-hour, when GitHub delays or drops scheduled runs
   workflow_dispatch:
 concurrency:
   group: sync
